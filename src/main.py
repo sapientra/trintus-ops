@@ -1,23 +1,29 @@
-import os
 import logging
 from typing import Any, Dict
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
-from dotenv import load_dotenv
 
-from . import github_utils, investigator, slack_utils
-
-load_dotenv()
+from . import github_utils, slack_utils
+from .ai_investigator import investigate_incident
+from .aws_devops_agent import AWSDevOpsAgentClient
+from .config import settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Ops Commander MVP")
+app = FastAPI(title="Ops Commander")
+
+aws_agent = AWSDevOpsAgentClient()
+
 
 @app.get("/")
 async def root() -> Dict[str, str]:
-    return {"message": "Ops Commander is running"}
+    return {
+        "message": "Ops Commander is running",
+        "environment": settings.environment,
+    }
+
 
 @app.post("/webhook/sentry")
 async def handle_sentry_webhook(payload: Dict[str, Any]):
@@ -29,36 +35,47 @@ async def handle_sentry_webhook(payload: Dict[str, Any]):
         if not error_message:
             raise ValueError("No error message found in payload")
 
-        repo_full_name = os.getenv("REPO_FULL_NAME")
-        if not repo_full_name:
+        if not settings.repo_full_name:
             raise RuntimeError("REPO_FULL_NAME environment variable must be set")
 
-        commits = github_utils.get_recent_commits(repo_full_name, n=5)
-        culprit = investigator.find_root_cause(error_message, commits)
+        commits = github_utils.get_recent_commits(settings.repo_full_name, n=10)
 
-        text_lines = [
-            f"🚨 Incident detected in `{project_name}`",
-            f"Error: {error_message}",
-        ]
+        ai_report = investigate_incident(
+            error_message=error_message,
+            project_name=project_name,
+            release=release,
+            commits=commits,
+        )
 
-        if release:
-            text_lines.append(f"Release: {release}")
+        aws_report = None
 
-        if culprit:
-            text_lines.append(
-                f"Suspected commit: {culprit['sha'][:7]} by {culprit['author_name']}"
-            )
-            text_lines.append(f"Commit message: {culprit['message']}")
-            text_lines.append("Suggested action: rollback latest deployment and investigate changes.")
-        else:
-            text_lines.append("No specific commit identified.")
+        if settings.aws_devops_agent_enabled:
+            aws_report = aws_agent.investigate_incident(payload)
 
-        slack_text = "\n".join(text_lines)
-        slack_utils.send_message(slack_text)
+        message = f"""
+🚨 INCIDENT DETECTED
 
-        logger.info("Incident processed successfully")
-        return JSONResponse({"status": "ok"})
+Project: {project_name}
+Release: {release}
+Error: {error_message}
+
+AI Investigation:
+{ai_report}
+
+AWS DevOps Agent:
+{aws_report}
+"""
+
+        slack_utils.send_message(message)
+
+        return JSONResponse(
+            {
+                "status": "ok",
+                "ai_report": ai_report,
+                "aws_report": aws_report,
+            }
+        )
 
     except Exception as exc:
-        logger.exception("Error handling Sentry webhook")
+        logger.exception("Error handling incident")
         raise HTTPException(status_code=500, detail=str(exc))

@@ -1,29 +1,50 @@
-# Ops Commander MVP
+# Ops Commander
 
-This repository contains a minimal proof-of-concept for an **autonomous incident investigation agent**.
+Ops Commander is a production-grade autonomous incident response and mitigation platform.
 
-The goal of this MVP is to demonstrate how a small service can ingest error alerts, correlate them with recent GitHub commits, and notify a team in Slack with a probable root cause and suggested action. It is intentionally simple but designed to be extended into a multi-agent, always-on incident response and mitigation system.
+It continuously monitors incidents, correlates telemetry with deploys and GitHub commits, performs AI-powered investigations, integrates with AWS DevOps Agent, and delivers operational intelligence directly into Slack.
 
-## How it works
-
-1. **Webhook endpoint** - The service exposes a `/webhook/sentry` endpoint using FastAPI. You can configure Sentry to call this URL when an error occurs.
-2. **Incident ingestion** - When an alert arrives, the server extracts the error message, project, release, and timestamp.
-3. **GitHub context** - The service fetches recent commits from the configured GitHub repository using the GitHub REST API.
-4. **Root cause heuristic** - The MVP compares the error message with recent commit messages and selects the most likely culprit.
-5. **Slack notification** - The service posts an incident summary to Slack through an incoming webhook.
-
-## Project structure
+## Architecture
 
 ```text
-src/main.py          FastAPI app and Sentry webhook route
-src/github_utils.py  GitHub API helpers
-src/investigator.py  Root-cause heuristic
-src/slack_utils.py   Slack webhook helper
-requirements.txt     Python dependencies
-Dockerfile           Container runtime
+Sentry / Alerts
+    ↓
+Ops Commander API
+    ↓
+Investigation Pipeline
+    ├── GitHub correlation
+    ├── AI Investigator
+    ├── AWS DevOps Agent adapter
+    ├── Incident orchestration
+    └── Slack notification engine
 ```
 
-## Running locally
+## Features
+
+- FastAPI production API
+- AI-powered incident investigation
+- GitHub deploy correlation
+- Slack incident summaries
+- AWS DevOps Agent integration layer
+- Typed configuration system
+- Extensible multi-agent architecture
+- Production-ready dependency stack
+
+## Environment Variables
+
+```env
+REPO_FULL_NAME=sapientra/trintus-ops
+GITHUB_TOKEN=github_token
+SLACK_WEBHOOK_URL=slack_webhook
+OPENAI_API_KEY=openai_key
+OPENAI_MODEL=gpt-4.1-mini
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=aws_key
+AWS_SECRET_ACCESS_KEY=aws_secret
+AWS_DEVOPS_AGENT_ENABLED=true
+```
+
+## Run locally
 
 ```bash
 python -m venv .venv
@@ -32,26 +53,21 @@ pip install -r requirements.txt
 uvicorn src.main:app --reload
 ```
 
-Create a `.env` file:
-
-```env
-GITHUB_TOKEN=ghp_xxx
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXX/YYY/ZZZ
-REPO_FULL_NAME=yourusername/yourrepo
-```
-
-## Test payload
+## Test incident
 
 ```bash
-curl -X POST http://localhost:8000/webhook/sentry \
+curl -X POST http://127.0.0.1:8000/webhook/sentry \
   -H "Content-Type: application/json" \
   -d '{"title":"TypeError: Cannot read property id of undefined","project_name":"payments-api","release":"abc123"}'
 ```
 
-## Next extensions
+## Next production upgrades
 
-- Slack bot with `/investigate`, `/rollback`, and `/postmortem`
-- LLM-powered investigation using stack traces, diffs, logs, and deploy metadata
-- Human approval workflow for rollback
+- Postgres incident persistence
+- Slack interactive approvals
+- Autonomous rollback engine
 - Recovery verification agent
-- Prevention PR agent that proposes code/config changes after incident resolution
+- Prevention PR generator
+- Kubernetes and CloudWatch integrations
+- Long-term operational memory
+- Multi-tenant architecture
